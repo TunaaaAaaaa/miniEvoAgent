@@ -15,9 +15,11 @@ class Agent(BaseModel):
 
     def execute(self, inputs: dict[str, object]) -> Message:
         output = self.action.execute(inputs)
+        metadata = {"description": self.description}
+        metadata.update(output.metadata)
         return Message(
             content=output.content,
             agent=self.name,
             action=self.action.name,
-            metadata={"description": self.description},
+            metadata=metadata,
         )

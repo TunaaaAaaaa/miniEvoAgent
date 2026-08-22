@@ -47,6 +47,9 @@ def test_action_executes_prompt_llm_and_parser() -> None:
     assert llm.last_prompt == "Question: Capital of France?"
     assert output.content == "Paris"
     assert output.raw_response is None
+    assert output.metadata["prompt"] == "Question: Capital of France?"
+    assert output.metadata["llm"] == {"provider": "fake"}
+    assert output.metadata["input_keys"] == ["question"]
 
 
 def test_agent_executes_action_and_returns_message() -> None:
@@ -67,6 +70,8 @@ def test_agent_executes_action_and_returns_message() -> None:
     assert message.agent == "qa_agent"
     assert message.action == "answer_question"
     assert message.content == "Paris"
+    assert message.metadata["prompt"] == "Question: Capital of France?"
+    assert message.metadata["llm"] == {"provider": "fake"}
 
 
 def test_message_records_expected_fields() -> None:
@@ -83,3 +88,4 @@ def test_message_records_expected_fields() -> None:
     assert message.agent == "qa_agent"
     assert message.action == "answer_question"
     assert message.content == "A short answer"
+    assert message.metadata["description"] == "QA"

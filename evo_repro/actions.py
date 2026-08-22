@@ -18,4 +18,13 @@ class Action(BaseModel):
     def execute(self, inputs: dict[str, object]) -> ActionOutput:
         prompt = self.prompt_template.format(**inputs)
         llm_response = self.llm.generate(prompt)
-        return self.output_parser.parse(llm_response)
+        output = self.output_parser.parse(llm_response)
+        output.metadata.update(
+            {
+                "action": self.name,
+                "prompt": prompt,
+                "prompt_template": self.prompt_template.template,
+                "input_keys": sorted(inputs),
+            }
+        )
+        return output
