@@ -3,7 +3,19 @@ from .agents import Agent
 from .evaluators import accuracy, evaluate_qa, exact_match, f1_score, normalize_answer
 from .llms import BaseLLM, LLMResponse, OpenAILLM, ToolCall
 from .messages import Message
-from .optimization import PromptFeedbackExample, PromptRewriteResult, PromptRewriter
+from .optimization import (
+    EvaluationRecord,
+    EvolutionExample,
+    EvolutionRoundTrace,
+    PromptFeedbackExample,
+    PromptRewriteResult,
+    PromptRewriter,
+    PromptSelector,
+    RewriteTrace,
+    SelectionResult,
+    evolve,
+    evolve_once,
+)
 from .parsers import ActionOutput, TextOutputParser
 from .prompts import PromptTemplate
 from .tools import Tool, ToolResult, get_word_length, get_word_length_tool
@@ -13,7 +25,12 @@ __all__ = [
     "ActionOutput",
     "Agent",
     "BaseLLM",
+    "EvaluationRecord",
+    "EvolutionExample",
+    "EvolutionRoundTrace",
     "accuracy",
+    "evolve",
+    "evolve_once",
     "evaluate_qa",
     "exact_match",
     "f1_score",
@@ -24,7 +41,10 @@ __all__ = [
     "PromptFeedbackExample",
     "PromptRewriteResult",
     "PromptRewriter",
+    "PromptSelector",
     "PromptTemplate",
+    "RewriteTrace",
+    "SelectionResult",
     "TextOutputParser",
     "Tool",
     "ToolCall",
