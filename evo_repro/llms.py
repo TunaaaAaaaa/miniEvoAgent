@@ -1,3 +1,4 @@
+import json
 import os
 from abc import ABC, abstractmethod
 from typing import Any
@@ -5,10 +6,19 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ToolCall(BaseModel):
+    """Tool invocation requested by an LLM."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
 class LLMResponse(BaseModel):
-    """Raw text returned by an LLM provider."""
+    """Raw response returned by an LLM provider."""
 
     content: str
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     raw_response: Any | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -17,21 +27,50 @@ class BaseLLM(ABC):
     """Minimal synchronous LLM interface."""
 
     @abstractmethod
-    def generate(self, prompt: str) -> LLMResponse:
+    def generate(
+        self,
+        prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+        tools: list[Any] | None = None,
+    ) -> LLMResponse:
         """Generate a model response for a prompt."""
 
 
 class OpenAILLM(BaseLLM):
-    """Tiny OpenAI chat-completions adapter using OPENAI_API_KEY."""
+    """Tiny OpenAI-compatible chat-completions adapter."""
 
-    def __init__(self, model: str = "gpt-4o-mini") -> None:
-        self.model = model
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.base_url = os.getenv("OPENAI_BASE_URL")
+    def __init__(
+        self,
+        model: str | None = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self._load_env()
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.base_url = (
+            base_url
+            or api_base
+            or os.getenv("OPENAI_BASE_URL")
+            or os.getenv("OPENAI_API_BASE")
+        )
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required.")
 
-    def generate(self, prompt: str) -> LLMResponse:
+    def _load_env(self) -> None:
+        try:
+            from dotenv import load_dotenv
+        except ImportError:
+            return
+        load_dotenv()
+
+    def generate(
+        self,
+        prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+        tools: list[Any] | None = None,
+    ) -> LLMResponse:
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -41,13 +80,37 @@ class OpenAILLM(BaseLLM):
         if self.base_url:
             client_kwargs["base_url"] = self.base_url
         client = OpenAI(**client_kwargs)
+        request_messages = messages or [{"role": "user", "content": prompt}]
+        request_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": request_messages,
+        }
+        if tools:
+            request_kwargs["tools"] = [tool.to_schema() for tool in tools]
         response = client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
+            **request_kwargs,
         )
-        content = response.choices[0].message.content or ""
+        message = response.choices[0].message
+        content = message.content or ""
+        tool_calls = []
+        for call in message.tool_calls or []:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"OpenAI returned invalid tool arguments for "
+                    f"'{call.function.name}': {call.function.arguments}"
+                ) from exc
+            tool_calls.append(
+                ToolCall(
+                    id=call.id,
+                    name=call.function.name,
+                    arguments=arguments,
+                )
+            )
         return LLMResponse(
             content=content,
+            tool_calls=tool_calls,
             raw_response=response,
             metadata={"model": self.model},
         )

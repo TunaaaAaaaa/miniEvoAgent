@@ -1,5 +1,7 @@
 import pytest
 
+from typing import Any
+
 from evo_repro import (
     Action,
     Agent,
@@ -14,9 +16,16 @@ class FakeLLM(BaseLLM):
     def __init__(self, content: str = "Paris") -> None:
         self.content = content
         self.last_prompt: str | None = None
+        self.call_count = 0
 
-    def generate(self, prompt: str) -> LLMResponse:
+    def generate(
+        self,
+        prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+        tools: list[Any] | None = None,
+    ) -> LLMResponse:
         self.last_prompt = prompt
+        self.call_count += 1
         return LLMResponse(content=self.content, metadata={"provider": "fake"})
 
 
@@ -53,10 +62,11 @@ def test_action_executes_prompt_llm_and_parser() -> None:
 
 
 def test_agent_executes_action_and_returns_message() -> None:
+    llm = FakeLLM()
     action = Action(
         name="answer_question",
         prompt_template=PromptTemplate(template="Question: {question}"),
-        llm=FakeLLM(),
+        llm=llm,
         output_parser=TextOutputParser(),
     )
     agent = Agent(
@@ -72,6 +82,7 @@ def test_agent_executes_action_and_returns_message() -> None:
     assert message.content == "Paris"
     assert message.metadata["prompt"] == "Question: Capital of France?"
     assert message.metadata["llm"] == {"provider": "fake"}
+    assert llm.call_count == 1
 
 
 def test_message_records_expected_fields() -> None:
