@@ -3,7 +3,9 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from .base import BaseModel
 
 
 class ToolCall(BaseModel):
@@ -35,6 +37,11 @@ class BaseLLM(ABC):
     ) -> LLMResponse:
         """Generate a model response for a prompt."""
 
+    def to_config(self) -> dict[str, Any]:
+        """Return non-secret configuration metadata for this runtime LLM."""
+
+        return {"class_name": type(self).__name__}
+
 
 class OpenAILLM(BaseLLM):
     """Tiny OpenAI-compatible chat-completions adapter."""
@@ -57,6 +64,15 @@ class OpenAILLM(BaseLLM):
         )
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required.")
+
+    def to_config(self) -> dict[str, Any]:
+        config = {
+            "class_name": type(self).__name__,
+            "model": self.model,
+        }
+        if self.base_url:
+            config["base_url"] = self.base_url
+        return config
 
     def _load_env(self) -> None:
         try:

@@ -1,8 +1,9 @@
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from .base import BaseModel
 from .llms import BaseLLM
 from .parsers import ActionOutput, TextOutputParser
 from .prompts import PromptTemplate
@@ -85,3 +86,15 @@ class Action(BaseModel):
             }
         )
         return output
+
+    def to_config(self) -> dict[str, Any]:
+        return {
+            "class_name": self.class_name,
+            "version": self.version,
+            "name": self.name,
+            "prompt_template": self.prompt_template.to_config(),
+            "llm_config": self.llm.to_config(),
+            "output_parser": self.output_parser.to_config(),
+            "tools": [tool.to_config() for tool in self.tools],
+            "max_tool_rounds": self.max_tool_rounds,
+        }

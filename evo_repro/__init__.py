@@ -1,5 +1,6 @@
 from .actions import Action
 from .agents import Agent
+from .base import BaseModel
 from .evaluators import accuracy, evaluate_qa, exact_match, f1_score, normalize_answer
 from .llms import BaseLLM, LLMResponse, OpenAILLM, ToolCall
 from .messages import Message
@@ -25,6 +26,7 @@ __all__ = [
     "ActionOutput",
     "Agent",
     "BaseLLM",
+    "BaseModel",
     "EvaluationRecord",
     "EvolutionExample",
     "EvolutionRoundTrace",

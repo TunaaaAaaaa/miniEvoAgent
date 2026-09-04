@@ -1,6 +1,8 @@
 from typing import Any, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from evo_repro.base import BaseModel
 
 
 class ToolResult(BaseModel):
@@ -54,5 +56,18 @@ class Tool(BaseModel):
                 "name": self.name,
                 "description": self.description,
                 "parameters": self.parameters_schema,
+            },
+        }
+
+    def to_config(self) -> dict[str, Any]:
+        return {
+            "class_name": self.class_name,
+            "version": self.version,
+            "name": self.name,
+            "description": self.description,
+            "parameters_schema": self.parameters_schema,
+            "function_ref": {
+                "module": self.function.__module__,
+                "qualname": self.function.__qualname__,
             },
         }

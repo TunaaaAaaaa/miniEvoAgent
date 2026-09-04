@@ -38,6 +38,10 @@ workflow graphs, memory, benchmark adapters, visual editors, or richer toolkits.
 - Dev-set selection: accepts a candidate prompt only when it improves the score.
 - Traceable evolution: records train executions, rewrite inputs, dev scores, and
   selection decisions for every generation.
+- Unified component base: core data models inherit from `BaseModel` with
+  `class_name`, `version`, dict/JSON round trips, and file persistence.
+- Config/runtime separation: components with LLMs or Python functions expose
+  `to_config()` with persistence-friendly references.
 - Focused test suite: deterministic fake LLMs make the evolution logic testable
   without remote model calls.
 

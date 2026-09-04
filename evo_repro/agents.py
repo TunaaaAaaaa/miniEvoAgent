@@ -1,6 +1,5 @@
-from pydantic import BaseModel
-
 from .actions import Action
+from .base import BaseModel
 from .messages import Message
 
 
@@ -23,3 +22,12 @@ class Agent(BaseModel):
             action=self.action.name,
             metadata=metadata,
         )
+
+    def to_config(self) -> dict[str, object]:
+        return {
+            "class_name": self.class_name,
+            "version": self.version,
+            "name": self.name,
+            "description": self.description,
+            "action": self.action.to_config(),
+        }

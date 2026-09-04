@@ -2,9 +2,10 @@ from collections.abc import Callable, Sequence
 from statistics import mean
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from evo_repro.agents import Agent
+from evo_repro.base import BaseModel
 from evo_repro.evaluators import evaluate_qa
 
 from .prompt_rewriter import PromptFeedbackExample, PromptRewriter

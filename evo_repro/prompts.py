@@ -1,6 +1,6 @@
 from string import Formatter
 
-from pydantic import BaseModel
+from .base import BaseModel
 
 
 class PromptTemplate(BaseModel):

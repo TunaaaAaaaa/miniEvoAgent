@@ -1,7 +1,8 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from .base import BaseModel
 from .llms import LLMResponse
 
 
@@ -13,7 +14,7 @@ class ActionOutput(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class TextOutputParser:
+class TextOutputParser(BaseModel):
     """Parser that keeps the model text unchanged."""
 
     def parse(self, response: LLMResponse) -> ActionOutput:

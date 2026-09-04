@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from evo_repro.base import BaseModel
 from evo_repro.llms import BaseLLM
 
 
@@ -46,6 +47,13 @@ class PromptRewriter(BaseModel):
             original_prompt=current_prompt,
             candidate_prompt=candidate_prompt,
         )
+
+    def to_config(self) -> dict[str, object]:
+        return {
+            "class_name": self.class_name,
+            "version": self.version,
+            "optimizer_llm_config": self.optimizer_llm.to_config(),
+        }
 
     def _build_optimizer_prompt(
         self,

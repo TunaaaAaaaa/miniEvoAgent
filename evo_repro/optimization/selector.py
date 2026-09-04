@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from evo_repro.base import BaseModel
 
 
 class SelectionResult(BaseModel):
