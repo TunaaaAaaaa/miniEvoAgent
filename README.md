@@ -214,6 +214,42 @@ python -m pytest
 The tests use fake LLM implementations where possible, so most framework logic
 can be checked without API keys.
 
+## PostgreSQL Experiment Storage
+
+miniEvoAgent uses PostgreSQL as the structured storage layer for upcoming
+benchmark, evaluation, and evolution-trace workflows. Configure the connection
+in `.env`:
+
+```powershell
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/minievoagent
+```
+
+Initialize the tables:
+
+```powershell
+python scripts\init_postgres_storage.py
+```
+
+Run the live database write/read smoke check:
+
+```powershell
+python scripts\run_postgres_storage_checks.py
+```
+
+The current schema covers:
+
+- `benchmarks`: benchmark metadata.
+- `examples`: train/dev/test examples and labels.
+- `prompts`: prompt content, hashes, and parent prompts.
+- `agent_configs`: reproducible agent configurations.
+- `runs`: experiment run configuration, status, and final scores.
+- `evaluations`: aggregate metrics for a prompt on a split.
+- `evaluation_items`: per-example prediction, label, metrics, and rendered prompt.
+- `evolution_rounds`: parent/candidate/selected prompts and selection decisions.
+
+`PostgresConfig.to_config()` and `PostgreSQLStorage.to_config()` mask database
+passwords so persisted configs do not store secrets.
+
 ## Relationship to EvoAgentX
 
 EvoAgentX is a full agentic workflow framework with workflow generation,

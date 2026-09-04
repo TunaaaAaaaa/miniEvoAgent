@@ -19,6 +19,7 @@ from .optimization import (
 )
 from .parsers import ActionOutput, TextOutputParser
 from .prompts import PromptTemplate
+from .storage import PostgreSQLStorage, PostgresConfig
 from .tools import Tool, ToolResult, get_word_length, get_word_length_tool
 
 __all__ = [
@@ -45,6 +46,8 @@ __all__ = [
     "PromptRewriter",
     "PromptSelector",
     "PromptTemplate",
+    "PostgreSQLStorage",
+    "PostgresConfig",
     "RewriteTrace",
     "SelectionResult",
     "TextOutputParser",

@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 dependencies = [
     "openai>=1",
     "pydantic>=2",
+    "psycopg[binary]>=3.1",
     "python-dotenv>=1",
 ]
 
