@@ -135,7 +135,10 @@ def test_evolve_once_re_evaluates_candidate_on_dev_set() -> None:
     assert trace.candidate_dev_score == mean(
         record.metrics["f1"] for record in trace.candidate_dev_records
     )
-    assert all("P1" in record.rendered_prompt for record in trace.candidate_dev_records)
+    assert all(
+        record.rendered_prompt is not None and "P1" in record.rendered_prompt
+        for record in trace.candidate_dev_records
+    )
     assert any(call["prompt_name"] == "P1" for call in fake_llm.calls)
 
 
@@ -168,7 +171,8 @@ def test_evolve_three_generations_and_trace_invariants() -> None:
             record.metrics["f1"] for record in trace.candidate_dev_records
         )
         assert all(
-            trace.candidate_prompt in record.rendered_prompt
+            record.rendered_prompt is not None
+            and trace.candidate_prompt in record.rendered_prompt
             for record in trace.candidate_dev_records
         )
         train_ids = set(trace.rewrite_input.rewriter_training_sample_ids)

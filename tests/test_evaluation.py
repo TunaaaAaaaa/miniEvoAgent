@@ -128,12 +128,15 @@ def test_evaluator_runs_evoagentx_style_benchmark() -> None:
 def test_evaluator_requires_collate_func_to_return_dict() -> None:
     evaluator = Evaluator()
 
+    def invalid_collate(example: Any) -> Any:
+        return "not a dict"
+
     with pytest.raises(ValueError, match="collate_func must return a dict"):
         evaluator.evaluate_agent(
             agent=build_agent(),
             benchmark=FakeBenchmark(),
             split="dev",
-            collate_func=lambda example: "not a dict",
+            collate_func=invalid_collate,
         )
 
 
@@ -147,6 +150,57 @@ def test_evaluator_rejects_unknown_split() -> None:
             split="validation",
             collate_func=lambda example: {"question": example["question"]},
         )
+
+
+@pytest.mark.parametrize("sample_k", [0, -1])
+def test_evaluator_requires_positive_sample_size(sample_k: int) -> None:
+    evaluator = Evaluator()
+
+    with pytest.raises(ValueError, match="sample_k must be positive"):
+        evaluator.evaluate_agent(
+            agent=build_agent(),
+            benchmark=FakeBenchmark(),
+            split="dev",
+            sample_k=sample_k,
+            collate_func=lambda example: {"question": example["question"]},
+        )
+
+
+def test_evaluator_does_not_swallow_accessor_type_errors() -> None:
+    class BrokenBenchmark(FakeBenchmark):
+        def get_dev_data(self, sample_k=None, seed=None):
+            raise TypeError("bug inside benchmark accessor")
+
+    with pytest.raises(TypeError, match="bug inside benchmark accessor"):
+        Evaluator().evaluate_agent(
+            agent=build_agent(),
+            benchmark=BrokenBenchmark(),
+            split="dev",
+            sample_k=1,
+            seed=7,
+            collate_func=lambda example: {"question": example["question"]},
+        )
+
+
+def test_evaluator_locally_samples_legacy_accessors_without_kwargs() -> None:
+    class LegacyBenchmark(FakeBenchmark):
+        def get_dev_data(self):
+            return self.dev
+
+    result = Evaluator(score_key="f1").evaluate_agent(
+        agent=build_agent(),
+        benchmark=LegacyBenchmark(),
+        split="dev",
+        sample_k=1,
+        seed=7,
+        collate_func=lambda example: {"question": example["question"]},
+        output_postprocess_func=lambda message: (
+            message.content.split("Final answer:", 1)[1].strip()
+        ),
+    )
+
+    assert len(result.records) == 1
+    assert result.score == 1.0
 
 
 def test_evaluator_persists_records_when_storage_is_provided() -> None:

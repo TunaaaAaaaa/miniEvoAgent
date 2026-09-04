@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import Field
 
 from evo_repro.base import BaseModel
@@ -48,7 +50,7 @@ class PromptRewriter(BaseModel):
             candidate_prompt=candidate_prompt,
         )
 
-    def to_config(self) -> dict[str, object]:
+    def to_config(self) -> dict[str, Any]:
         return {
             "class_name": self.class_name,
             "version": self.version,

@@ -1,3 +1,5 @@
+from typing import Any
+
 from .actions import Action
 from .base import BaseModel
 from .messages import Message
@@ -23,7 +25,7 @@ class Agent(BaseModel):
             metadata=metadata,
         )
 
-    def to_config(self) -> dict[str, object]:
+    def to_config(self) -> dict[str, Any]:
         return {
             "class_name": self.class_name,
             "version": self.version,

@@ -10,6 +10,7 @@ from evo_repro import (
     EvolutionExample,
     LLMResponse,
     Message,
+    OpenAILLM,
     PromptRewriter,
     PromptTemplate,
     TextOutputParser,
@@ -130,3 +131,16 @@ def test_agent_and_rewriter_configs_keep_runtime_dependencies_as_configs() -> No
     assert "optimizer_llm" not in rewriter_config
     json.dumps(agent_config)
     json.dumps(rewriter_config)
+
+
+def test_openai_config_redacts_secrets_embedded_in_base_url() -> None:
+    llm = OpenAILLM(
+        api_key="provider-key",
+        base_url="https://user:password@example.com/v1?api_key=query-secret",
+    )
+
+    config = llm.to_config()
+
+    assert config["base_url"] == "https://user:***@example.com/v1?api_key=***"
+    assert "password" not in json.dumps(config)
+    assert "query-secret" not in json.dumps(config)

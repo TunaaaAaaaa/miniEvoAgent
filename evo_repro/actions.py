@@ -44,7 +44,11 @@ class Action(BaseModel):
                         "type": "function",
                         "function": {
                             "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments),
+                            "arguments": json.dumps(
+                                tool_call.arguments,
+                                ensure_ascii=False,
+                                allow_nan=False,
+                            ),
                         },
                     }
                     for tool_call in llm_response.tool_calls
@@ -67,7 +71,7 @@ class Action(BaseModel):
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "name": tool_call.name,
-                        "content": json.dumps(tool_result.result),
+                        "content": tool_result.to_message_content(),
                     }
                 )
 

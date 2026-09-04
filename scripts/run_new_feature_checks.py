@@ -10,7 +10,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from evo_repro import (
+from evo_repro import (  # noqa: E402
     Action,
     Agent,
     BaseLLM,

@@ -142,7 +142,9 @@ python examples\simple_agent.py
 ## Tool-Enabled Agent
 
 miniEvoAgent tools are thin wrappers around Python functions. A tool exposes a
-JSON schema to the LLM and returns a structured `ToolResult`.
+JSON schema to the LLM and returns a structured `ToolResult`. Tool results must
+be finite JSON-serializable values; the framework validates this contract before
+calling the LLM again.
 
 ```python
 from evo_repro import Action, Agent, OpenAILLM, PromptTemplate, TextOutputParser
@@ -224,6 +226,9 @@ or similar benchmark families; it expects the object to provide:
 `output_postprocess_func` extracts the final prediction from the returned
 `Message`.
 
+For sampling, pass a positive `sample_k`; `seed` makes local sampling for legacy
+accessors reproducible.
+
 Example:
 
 ```powershell
@@ -234,11 +239,15 @@ python examples\evaluate_evoagentx_benchmark.py
 ## Running Tests
 
 ```powershell
-python -m pytest
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m mypy evo_repro tests
+python -m pytest --cov=evo_repro --cov-report=term-missing --cov-fail-under=85
 ```
 
 The tests use fake LLM implementations where possible, so most framework logic
-can be checked without API keys.
+can be checked without API keys. GitHub Actions runs the same lint, type-check,
+and test gates on Python 3.10 through 3.13.
 
 ## PostgreSQL Experiment Storage
 

@@ -45,5 +45,38 @@ def test_tool_execution_error_is_not_swallowed() -> None:
         tool.execute({})
 
 
+def test_tool_internal_type_error_is_reported_as_execution_failure() -> None:
+    def broken() -> None:
+        raise TypeError("bug inside tool")
+
+    tool = Tool(
+        name="broken",
+        description="Raise an internal TypeError.",
+        parameters_schema={"type": "object", "properties": {}},
+        function=broken,
+    )
+
+    with pytest.raises(RuntimeError, match="execution failed: bug inside tool"):
+        tool.execute({})
+
+
+def test_tool_rejects_non_json_serializable_results() -> None:
+    tool = Tool(
+        name="opaque",
+        description="Return an opaque object.",
+        parameters_schema={"type": "object", "properties": {}},
+        function=object,
+    )
+
+    with pytest.raises(TypeError, match="non-JSON-serializable result"):
+        tool.execute({})
+
+
+def test_tool_result_preserves_unicode_in_message_content() -> None:
+    result = ToolResult(tool_call_id="call_1", name="echo", result={"text": "你好"})
+
+    assert result.to_message_content() == '{"text": "你好"}'
+
+
 def test_get_word_length_function() -> None:
     assert get_word_length("retrieval") == 9

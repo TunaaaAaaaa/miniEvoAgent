@@ -49,6 +49,21 @@ def test_mask_database_url_handles_url_without_password() -> None:
     assert mask_database_url(database_url) == database_url
 
 
+def test_mask_database_url_redacts_secret_query_parameters() -> None:
+    database_url = (
+        "postgresql://user:secret@[::1]:5432/minievoagent"
+        "?sslpassword=query-secret&application_name=tests"
+    )
+
+    masked_url = mask_database_url(database_url)
+
+    assert masked_url == (
+        "postgresql://user:***@[::1]:5432/minievoagent"
+        "?sslpassword=***&application_name=tests"
+    )
+    assert "secret" not in masked_url
+
+
 def test_schema_contains_experiment_storage_tables_and_indexes() -> None:
     required_names = [
         "benchmarks",

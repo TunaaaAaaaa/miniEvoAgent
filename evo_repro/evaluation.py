@@ -1,18 +1,63 @@
 from collections.abc import Callable, Sequence
+from inspect import Parameter, signature
 import random
 from statistics import mean
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import Field
 
 from .agents import Agent
 from .base import BaseModel
 from .messages import Message
-from .storage import PostgreSQLStorage
 
 
 CollateFunc = Callable[[Any], dict[str, Any]]
 PostprocessFunc = Callable[[Message], Any]
+
+
+class EvaluationStorage(Protocol):
+    """Storage contract required by ``Evaluator.evaluate_agent``."""
+
+    def upsert_benchmark(
+        self,
+        *,
+        name: str,
+        task_type: str,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int: ...
+
+    def add_example(
+        self,
+        *,
+        benchmark_id: int,
+        split: str,
+        sample_id: str,
+        input_data: Any,
+        label: Any,
+        metadata: dict[str, Any] | None = None,
+    ) -> int: ...
+
+    def save_evaluation(
+        self,
+        *,
+        run_id: int | None,
+        prompt_id: int | None,
+        split: str,
+        aggregate_metrics: dict[str, float],
+    ) -> int: ...
+
+    def save_evaluation_item(
+        self,
+        *,
+        evaluation_id: int,
+        example_id: int | None,
+        prediction: Any,
+        label: Any,
+        metrics: dict[str, float],
+        rendered_prompt: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int: ...
 
 
 class AgentEvaluationRecord(BaseModel):
@@ -63,7 +108,7 @@ class Evaluator(BaseModel):
         output_postprocess_func: PostprocessFunc | None = None,
         sample_k: int | None = None,
         seed: int | None = None,
-        storage: PostgreSQLStorage | None = None,
+        storage: EvaluationStorage | None = None,
         run_id: int | None = None,
         prompt_id: int | None = None,
         benchmark_task_type: str | None = None,
@@ -82,9 +127,10 @@ class Evaluator(BaseModel):
         benchmark_storage_id = None
         example_storage_ids: dict[str, int] = {}
         if storage is not None:
+            task_type = benchmark_task_type or getattr(benchmark, "task_type", None)
             benchmark_storage_id = storage.upsert_benchmark(
                 name=benchmark_name,
-                task_type=benchmark_task_type or getattr(benchmark, "task_type", "unknown"),
+                task_type=str(task_type or "unknown"),
                 description=getattr(benchmark, "description", None),
                 metadata={"source": type(benchmark).__name__},
             )
@@ -165,14 +211,17 @@ class Evaluator(BaseModel):
     ) -> list[Any]:
         if split not in {"train", "dev", "test"}:
             raise ValueError("split must be one of: train, dev, test")
+        if sample_k is not None and sample_k <= 0:
+            raise ValueError("sample_k must be positive.")
 
         method_name = f"get_{split}_data"
         if hasattr(benchmark, method_name):
             method = getattr(benchmark, method_name)
-            try:
+            if not callable(method):
+                raise TypeError(f"benchmark.{method_name} must be callable.")
+            if self._supports_sampling_arguments(method):
                 return list(method(sample_k=sample_k, seed=seed))
-            except TypeError:
-                examples = list(method())
+            examples = list(method())
         elif hasattr(benchmark, "get_data_by_mode"):
             examples = list(benchmark.get_data_by_mode(mode=split))
         else:
@@ -193,10 +242,24 @@ class Evaluator(BaseModel):
         examples = list(examples)
         if sample_k is None:
             return examples
-        if sample_k < 0:
-            raise ValueError("sample_k must be non-negative.")
+        if sample_k <= 0:
+            raise ValueError("sample_k must be positive.")
         rng = random.Random(seed)
         return rng.sample(examples, k=min(sample_k, len(examples)))
+
+    def _supports_sampling_arguments(self, method: Callable[..., Any]) -> bool:
+        try:
+            parameters = signature(method).parameters
+        except (TypeError, ValueError):
+            return False
+
+        if any(parameter.kind is Parameter.VAR_KEYWORD for parameter in parameters.values()):
+            return True
+        keyword_kinds = {Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY}
+        return all(
+            name in parameters and parameters[name].kind in keyword_kinds
+            for name in ("sample_k", "seed")
+        )
 
     def _aggregate_metrics(
         self,

@@ -1,5 +1,6 @@
 import pytest
 
+from types import SimpleNamespace
 from typing import Any
 
 from evo_repro import (
@@ -39,6 +40,30 @@ def test_prompt_template_missing_variable_has_clear_error() -> None:
     template = PromptTemplate(template="Answer:\n{question}")
 
     with pytest.raises(ValueError, match="Missing prompt variable\\(s\\): question"):
+        template.format()
+
+
+def test_prompt_template_supports_attribute_and_item_access() -> None:
+    template = PromptTemplate(template="{user.name}: {values[0]}")
+
+    assert template.required_variables() == {"user", "values"}
+    assert template.format(
+        user=SimpleNamespace(name="Ada"),
+        values=["ready"],
+    ) == "Ada: ready"
+
+
+def test_prompt_template_discovers_variables_in_nested_format_specs() -> None:
+    template = PromptTemplate(template="{value:.{precision}f}")
+
+    assert template.required_variables() == {"value", "precision"}
+    assert template.format(value=3.14159, precision=2) == "3.14"
+
+
+def test_prompt_template_rejects_positional_variables() -> None:
+    template = PromptTemplate(template="Answer: {}")
+
+    with pytest.raises(ValueError, match="supports named variables only"):
         template.format()
 
 

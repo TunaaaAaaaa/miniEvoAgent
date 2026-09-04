@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import Field
 
 from .base import BaseModel
+from .urls import redact_url_secrets
 
 
 class ToolCall(BaseModel):
@@ -55,23 +56,24 @@ class OpenAILLM(BaseLLM):
     ) -> None:
         self._load_env()
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not resolved_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required.")
+        self.api_key = resolved_api_key
         self.base_url = (
             base_url
             or api_base
             or os.getenv("OPENAI_BASE_URL")
             or os.getenv("OPENAI_API_BASE")
         )
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required.")
 
     def to_config(self) -> dict[str, Any]:
-        config = {
+        config: dict[str, Any] = {
             "class_name": type(self).__name__,
             "model": self.model,
         }
         if self.base_url:
-            config["base_url"] = self.base_url
+            config["base_url"] = redact_url_secrets(self.base_url)
         return config
 
     def _load_env(self) -> None:
@@ -92,10 +94,7 @@ class OpenAILLM(BaseLLM):
         except ImportError as exc:
             raise ImportError("Install the openai package to use OpenAILLM.") from exc
 
-        client_kwargs: dict[str, str] = {"api_key": self.api_key}
-        if self.base_url:
-            client_kwargs["base_url"] = self.base_url
-        client = OpenAI(**client_kwargs)
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         request_messages = messages or [{"role": "user", "content": prompt}]
         request_kwargs: dict[str, Any] = {
             "model": self.model,

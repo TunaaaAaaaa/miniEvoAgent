@@ -124,7 +124,7 @@ python examples\simple_agent.py
 
 ## 工具增强 Agent
 
-miniEvoAgent 的工具是 Python 函数外面的一层轻量封装。每个工具向 LLM 暴露 JSON schema，并返回结构化的 `ToolResult`。
+miniEvoAgent 的工具是 Python 函数外面的一层轻量封装。每个工具向 LLM 暴露 JSON schema，并返回结构化的 `ToolResult`。工具返回值必须是有限的 JSON 可序列化值；框架会在再次调用 LLM 前验证这一契约。
 
 ```python
 from evo_repro import Action, Agent, OpenAILLM, PromptTemplate, TextOutputParser
@@ -198,6 +198,8 @@ python examples\evolution_audit.py
 
 `collate_func` 负责把不同 benchmark 的原始样本转换成 agent 输入，`output_postprocess_func` 负责从 `Message` 中抽取最终 prediction。
 
+如需抽样，传入正整数 `sample_k`；`seed` 用于保证兼容访问器的本地抽样可复现。
+
 示例：
 
 ```powershell
@@ -208,10 +210,13 @@ python examples\evaluate_evoagentx_benchmark.py
 ## 运行测试
 
 ```powershell
-python -m pytest
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m mypy evo_repro tests
+python -m pytest --cov=evo_repro --cov-report=term-missing --cov-fail-under=85
 ```
 
-测试中尽量使用 fake LLM，因此大部分框架逻辑无需 API key 也能检查。
+测试中尽量使用 fake LLM，因此大部分框架逻辑无需 API key 也能检查。GitHub Actions 会在 Python 3.10–3.13 上执行相同的 lint、类型检查和测试门禁。
 
 ## PostgreSQL 实验存储
 

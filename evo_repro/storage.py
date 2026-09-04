@@ -2,11 +2,11 @@ import hashlib
 import json
 import os
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import Field
 
 from .base import BaseModel
+from .urls import redact_url_secrets
 
 
 SCHEMA_SQL = """
@@ -456,14 +456,7 @@ def stable_hash(value: str) -> str:
 def mask_database_url(database_url: str | None) -> str | None:
     if not database_url:
         return None
-    parts = urlsplit(database_url)
-    if not parts.password:
-        return database_url
-    username = parts.username or ""
-    host = parts.hostname or ""
-    port = f":{parts.port}" if parts.port else ""
-    netloc = f"{username}:***@{host}{port}"
-    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    return redact_url_secrets(database_url)
 
 
 def _json(value: Any) -> str:
