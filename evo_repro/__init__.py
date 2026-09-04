@@ -1,6 +1,7 @@
 from .actions import Action
 from .agents import Agent
 from .base import BaseModel
+from .evaluation import AgentEvaluationRecord, AgentEvaluationResult, Evaluator
 from .evaluators import accuracy, evaluate_qa, exact_match, f1_score, normalize_answer
 from .llms import BaseLLM, LLMResponse, OpenAILLM, ToolCall
 from .messages import Message
@@ -26,6 +27,8 @@ __all__ = [
     "Action",
     "ActionOutput",
     "Agent",
+    "AgentEvaluationRecord",
+    "AgentEvaluationResult",
     "BaseLLM",
     "BaseModel",
     "EvaluationRecord",
@@ -35,6 +38,7 @@ __all__ = [
     "evolve",
     "evolve_once",
     "evaluate_qa",
+    "Evaluator",
     "exact_match",
     "f1_score",
     "LLMResponse",

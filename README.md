@@ -19,6 +19,8 @@ It models an agent as a small execution unit:
 - `Action` calls an LLM, optionally executes tools, and parses the final output.
 - `Agent` wraps an action and returns a structured message.
 - `Evaluator` functions score QA-style predictions.
+- `Evaluator` can run EvoAgentX-style benchmarks and optionally persist results
+  to PostgreSQL.
 - `PromptRewriter` proposes improved prompts from feedback examples.
 - `PromptSelector` keeps the better prompt based on dev-set performance.
 - `evolve` runs the feedback, rewrite, evaluation, and selection loop.
@@ -42,6 +44,9 @@ workflow graphs, memory, benchmark adapters, visual editors, or richer toolkits.
   `class_name`, `version`, dict/JSON round trips, and file persistence.
 - Config/runtime separation: components with LLMs or Python functions expose
   `to_config()` with persistence-friendly references.
+- Official benchmark adapter: miniEvoAgent does not reimplement benchmark
+  families; it accepts EvoAgentX-style `get_*_data/get_id/get_label/evaluate`
+  objects directly.
 - Focused test suite: deterministic fake LLMs make the evolution logic testable
   without remote model calls.
 
@@ -52,6 +57,7 @@ miniEvoAgent/
 ├── evo_repro/
 │   ├── actions.py              # Action execution and tool-call loop
 │   ├── agents.py               # Minimal Agent wrapper
+│   ├── evaluation.py           # Thin Evaluator adapter for EvoAgentX-style benchmarks
 │   ├── evaluators.py           # QA metrics: EM, F1, accuracy
 │   ├── llms.py                 # BaseLLM and OpenAILLM adapter
 │   ├── messages.py             # Structured agent message
@@ -205,6 +211,26 @@ The built-in QA evaluator reports:
 These metrics are intentionally simple. They are useful for verifying the
 evolution loop and can be replaced later with benchmark-specific evaluators.
 
+For official benchmarks, use `Evaluator.evaluate_agent(...)` with an
+EvoAgentX-style object. miniEvoAgent does not reimplement NQ, HotPotQA, GSM8K,
+or similar benchmark families; it expects the object to provide:
+
+- `get_train_data()`, `get_dev_data()`, `get_test_data()`
+- `get_id(example)`
+- `get_label(example)`
+- `evaluate(prediction, label)`
+
+`collate_func` converts each raw benchmark example into agent inputs, and
+`output_postprocess_func` extracts the final prediction from the returned
+`Message`.
+
+Example:
+
+```powershell
+$env:PYTHONPATH="D:\Projects\RSIProject\reference\EvoAgentX"
+python examples\evaluate_evoagentx_benchmark.py
+```
+
 ## Running Tests
 
 ```powershell
@@ -263,7 +289,7 @@ mechanisms into a readable codebase:
 | --- | --- |
 | Agent/action modules | `Agent`, `Action`, `PromptTemplate`, `TextOutputParser` |
 | Built-in tool ecosystem | Minimal `Tool` wrapper plus example tools |
-| Evaluation | Lightweight QA metrics in `evaluators.py` |
+| Evaluation | Lightweight QA metrics in `evaluators.py`; `evaluation.py` directly adapts EvoAgentX-style benchmarks |
 | Prompt/workflow optimization | Prompt-level rewrite and selection loop |
 | Experiment traceability | `EvolutionRoundTrace` and related records |
 

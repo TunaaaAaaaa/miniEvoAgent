@@ -14,6 +14,7 @@ miniEvoAgent 是一个用于构建和改进 LLM 智能体的最小框架。它�
 - `Action` 负责调用 LLM，可选地执行工具，并解析最终输出。
 - `Agent` 封装一个 action，并返回结构化消息。
 - `Evaluator` 系列函数用于给 QA 类型预测打分。
+- `Evaluator` 类可直接运行 EvoAgentX 风格 benchmark，并可选写入 PostgreSQL。
 - `PromptRewriter` 根据反馈样本生成改进后的候选提示词。
 - `PromptSelector` 根据开发集表现保留更好的提示词。
 - `evolve` 负责运行反馈、重写、评估和选择构成的自进化循环。
@@ -30,6 +31,7 @@ miniEvoAgent 是一个用于构建和改进 LLM 智能体的最小框架。它�
 - 可追踪自进化：记录每一代的训练执行、重写输入、开发集分数和选择决策。
 - 统一组件基类：核心数据模型继承 `BaseModel`，支持 `class_name`、`version`、字典/JSON 往返和文件保存。
 - 配置/运行时分离：带 LLM、函数等运行时依赖的组件提供 `to_config()`，只保存可复现配置引用。
+- 正式 benchmark 适配：不重造 benchmark 家族，直接接收 EvoAgentX 风格的 `get_*_data/get_id/get_label/evaluate` 接口。
 - 聚焦测试套件：通过 deterministic fake LLM 测试框架逻辑，不依赖远程模型调用。
 
 ## 项目结构
@@ -39,6 +41,7 @@ miniEvoAgent/
 ├── evo_repro/
 │   ├── actions.py              # Action 执行与工具调用循环
 │   ├── agents.py               # 最小 Agent 封装
+│   ├── evaluation.py           # EvoAgentX 风格 benchmark 的薄 Evaluator 适配层
 │   ├── evaluators.py           # QA 指标：EM、F1、accuracy
 │   ├── llms.py                 # BaseLLM 与 OpenAILLM 适配器
 │   ├── messages.py             # 结构化智能体消息
@@ -186,6 +189,22 @@ python examples\evolution_audit.py
 
 这些指标故意保持简单，主要用于验证 evolution loop。后续可以替换成面向具体 benchmark 的评估器。
 
+如果要评估正式 benchmark，使用 `Evaluator.evaluate_agent(...)` 直接接入 EvoAgentX 风格对象。miniEvoAgent 不重新实现 NQ、HotPotQA、GSM8K 等 benchmark，只要求传入对象提供：
+
+- `get_train_data()`、`get_dev_data()`、`get_test_data()`
+- `get_id(example)`
+- `get_label(example)`
+- `evaluate(prediction, label)`
+
+`collate_func` 负责把不同 benchmark 的原始样本转换成 agent 输入，`output_postprocess_func` 负责从 `Message` 中抽取最终 prediction。
+
+示例：
+
+```powershell
+$env:PYTHONPATH="D:\Projects\RSIProject\reference\EvoAgentX"
+python examples\evaluate_evoagentx_benchmark.py
+```
+
 ## 运行测试
 
 ```powershell
@@ -237,7 +256,7 @@ miniEvoAgent 是一个更小的继续开发项目，把其中几类核心机制�
 | --- | --- |
 | Agent/action 模块 | `Agent`、`Action`、`PromptTemplate`、`TextOutputParser` |
 | 内置工具生态 | 最小 `Tool` 封装和示例工具 |
-| 评估 | `evaluators.py` 中的轻量 QA 指标 |
+| 评估 | `evaluators.py` 中的轻量 QA 指标；`evaluation.py` 直接适配 EvoAgentX 风格 benchmark |
 | 提示词/工作流优化 | prompt-level rewrite 与 selection loop |
 | 实验可追踪性 | `EvolutionRoundTrace` 及相关 record |
 

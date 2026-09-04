@@ -9,6 +9,11 @@ dependencies = [
     "python-dotenv>=1",
 ]
 
+[project.optional-dependencies]
+benchmarks = [
+    "evoagentx>=0.1",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

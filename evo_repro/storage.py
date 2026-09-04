@@ -194,6 +194,17 @@ class PostgreSQLStorage(BaseModel):
             (name, task_type, description, _json(metadata or {})),
         )
 
+    def get_benchmark_by_name(self, name: str) -> dict[str, Any] | None:
+        query = """
+        SELECT id, name, task_type, description, metadata_json, created_at
+        FROM benchmarks
+        WHERE name = %s;
+        """
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (name,))
+                return cur.fetchone()
+
     def add_example(
         self,
         *,
