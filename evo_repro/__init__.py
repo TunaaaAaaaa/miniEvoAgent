@@ -26,9 +26,16 @@ from .optimization import (
 from .parsers import ActionOutput, TextOutputParser
 from .prompts import PromptTemplate
 from .storage import PostgreSQLStorage, PostgresConfig
+from .tasks import TaskAdapter, QATask, NQTask, GSM8KTask
+from .provenance import RunProvenance
 from .tools import Tool, ToolResult, get_word_length, get_word_length_tool
 
 __all__ = [
+    "TaskAdapter",
+    "QATask",
+    "NQTask",
+    "GSM8KTask",
+    "RunProvenance",
     "Action",
     "ActionOutput",
     "Agent",

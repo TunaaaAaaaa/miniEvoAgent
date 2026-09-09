@@ -249,6 +249,12 @@ The tests use fake LLM implementations where possible, so most framework logic
 can be checked without API keys. GitHub Actions runs the same lint, type-check,
 and test gates on Python 3.10 through 3.13.
 
+## Task-Aware Evolution
+
+Evolution now supports NQ/GSM8K task adapters and versioned audit traces.
+See [task adapters and reproducibility](docs/evolution-v1.md), or run
+`python examples/task_evolution.py` for an offline smoke check.
+
 ## PostgreSQL Experiment Storage
 
 Schema v2 adds atomic evaluation saves, input snapshots and prompt lineage.

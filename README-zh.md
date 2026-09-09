@@ -218,6 +218,12 @@ python -m pytest --cov=evo_repro --cov-report=term-missing --cov-fail-under=85
 
 测试中尽量使用 fake LLM，因此大部分框架逻辑无需 API key 也能检查。GitHub Actions 会在 Python 3.10–3.13 上执行相同的 lint、类型检查和测试门禁。
 
+## 多任务演化
+
+演化流程已支持 NQ/GSM8K 任务适配器与版本化审计 trace。
+详见[任务适配与可复现信息](docs/evolution-v1.md)；离线验证可运行
+`python examples/task_evolution.py`。
+
 ## PostgreSQL 实验存储
 
 Schema v2 已加入整次评测事务、不可变输入快照和独立 prompt 血缘记录。

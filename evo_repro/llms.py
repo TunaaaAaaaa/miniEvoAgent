@@ -53,6 +53,11 @@ class OpenAILLM(BaseLLM):
         api_key: str | None = None,
         api_base: str | None = None,
         base_url: str | None = None,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        seed: int | None = None,
+        max_completion_tokens: int | None = None,
     ) -> None:
         self._load_env()
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -66,11 +71,18 @@ class OpenAILLM(BaseLLM):
             or os.getenv("OPENAI_BASE_URL")
             or os.getenv("OPENAI_API_BASE")
         )
+        self.generation_parameters = {
+            key: value for key, value in {
+                "temperature": temperature, "top_p": top_p, "seed": seed,
+                "max_completion_tokens": max_completion_tokens,
+            }.items() if value is not None
+        }
 
     def to_config(self) -> dict[str, Any]:
         config: dict[str, Any] = {
             "class_name": type(self).__name__,
             "model": self.model,
+            "generation_parameters": dict(self.generation_parameters),
         }
         if self.base_url:
             config["base_url"] = redact_url_secrets(self.base_url)
@@ -99,6 +111,7 @@ class OpenAILLM(BaseLLM):
         request_kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": request_messages,
+            **self.generation_parameters,
         }
         if tools:
             request_kwargs["tools"] = [tool.to_schema() for tool in tools]
@@ -127,5 +140,14 @@ class OpenAILLM(BaseLLM):
             content=content,
             tool_calls=tool_calls,
             raw_response=response,
-            metadata={"model": self.model},
+            metadata={
+                "model": getattr(response, "model", self.model),
+                "requested_model": self.model,
+                "response_id": getattr(response, "id", None),
+                "system_fingerprint": getattr(response, "system_fingerprint", None),
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "generation_parameters": dict(self.generation_parameters),
+                "usage": response.usage.model_dump(mode="json")
+                if getattr(response, "usage", None) is not None else None,
+            },
         )

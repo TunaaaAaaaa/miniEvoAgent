@@ -1,3 +1,5 @@
+from copy import deepcopy
+import json
 from typing import Any
 
 from pydantic import Field
@@ -10,9 +12,9 @@ class PromptFeedbackExample(BaseModel):
     """A single training feedback item for direct prompt rewriting."""
 
     sample_id: str | None = None
-    input: str
-    prediction: str
-    label: str
+    input: Any
+    prediction: Any
+    label: Any
     metrics: dict[str, float] | None = None
 
 
@@ -21,6 +23,10 @@ class PromptRewriteResult(BaseModel):
 
     original_prompt: str
     candidate_prompt: str
+    optimizer_prompt: str | None = None
+    optimizer_llm_config: dict[str, Any] = Field(default_factory=dict)
+    response_metadata: dict[str, Any] = Field(default_factory=dict)
+    response_content: str | None = None
 
 
 class PromptRewriter(BaseModel):
@@ -39,6 +45,7 @@ class PromptRewriter(BaseModel):
             raise ValueError("Prompt rewriting requires at least one feedback example.")
 
         optimizer_prompt = self._build_optimizer_prompt(current_prompt, examples)
+        optimizer_config = deepcopy(self.optimizer_llm.to_config())
         response = self.optimizer_llm.generate(optimizer_prompt)
         candidate_prompt = response.content.strip()
 
@@ -48,6 +55,10 @@ class PromptRewriter(BaseModel):
         return PromptRewriteResult(
             original_prompt=current_prompt,
             candidate_prompt=candidate_prompt,
+            optimizer_prompt=optimizer_prompt,
+            optimizer_llm_config=optimizer_config,
+            response_metadata=deepcopy(response.metadata),
+            response_content=response.content,
         )
 
     def to_config(self) -> dict[str, Any]:
@@ -90,13 +101,13 @@ class PromptRewriter(BaseModel):
             f"## Example {index}",
             "",
             "Input:",
-            example.input,
+            _feedback_text(example.input),
             "",
             "Agent Prediction:",
-            example.prediction,
+            _feedback_text(example.prediction),
             "",
             "Ground Truth:",
-            example.label,
+            _feedback_text(example.label),
         ]
         if example.metrics is not None:
             metric_lines = [
@@ -105,3 +116,9 @@ class PromptRewriter(BaseModel):
             ]
             parts.extend(["", "Metrics:", *metric_lines])
         return "\n".join(parts)
+
+
+def _feedback_text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(
+        value, ensure_ascii=False, sort_keys=True, allow_nan=False,
+    )

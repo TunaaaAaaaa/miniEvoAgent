@@ -209,3 +209,25 @@ def test_serialization_failure_rolls_back(storage):
         storage.save_evaluation_result(result=result, task_type="qa")
     assert rows(storage, "SELECT * FROM benchmarks") == []
     assert rows(storage, "SELECT * FROM evaluation_items") == []
+
+
+def test_evolution_trace_roundtrips_in_postgres_metadata(storage):
+    from evo_repro import EvolutionRoundTrace, GSM8KTask
+    from test_evolution_trace import run
+
+    storage.initialize()
+    trace = run(GSM8KTask(input_key="problem"), "#### 42")
+    parent = storage.save_prompt(content=trace.parent_prompt)
+    child = storage.save_prompt(content=trace.candidate_prompt, parent_prompt_id=parent)
+    run_id = storage.create_run(initial_prompt_id=parent, score_key=trace.score_key)
+    storage.save_evolution_round(
+        run_id=run_id, generation=trace.generation, parent_prompt_id=parent,
+        candidate_prompt_id=child, selected_prompt_id=child,
+        parent_score=trace.parent_dev_score, candidate_score=trace.candidate_dev_score,
+        accepted=trace.selection.accepted,
+        optimizer_prompt=trace.rewrite_input.optimizer_meta_prompt,
+        metadata=trace.to_dict(mode="json"),
+    )
+    saved = rows(storage, "SELECT metadata_json, optimizer_prompt FROM evolution_rounds")[0]
+    assert EvolutionRoundTrace.from_dict(saved["metadata_json"]) == trace
+    assert saved["optimizer_prompt"] == trace.rewrite_input.optimizer_meta_prompt
