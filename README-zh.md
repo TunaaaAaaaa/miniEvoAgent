@@ -220,6 +220,9 @@ python -m pytest --cov=evo_repro --cov-report=term-missing --cov-fail-under=85
 
 ## PostgreSQL 实验存储
 
+Schema v2 已加入整次评测事务、不可变输入快照和独立 prompt 血缘记录。
+升级前请阅读[迁移、兼容性与集成测试说明](docs/storage-v2.md)。
+
 miniEvoAgent 使用 PostgreSQL 作为后续 benchmark、evaluation 和 evolution trace 的结构化存储。先在 `.env` 中配置连接：
 
 ```powershell

@@ -251,6 +251,9 @@ and test gates on Python 3.10 through 3.13.
 
 ## PostgreSQL Experiment Storage
 
+Schema v2 adds atomic evaluation saves, input snapshots and prompt lineage.
+See [storage v2 migration and compatibility notes](docs/storage-v2.md) before upgrading.
+
 miniEvoAgent uses PostgreSQL as the structured storage layer for upcoming
 benchmark, evaluation, and evolution-trace workflows. Configure the connection
 in `.env`:

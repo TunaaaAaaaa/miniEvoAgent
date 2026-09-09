@@ -1,12 +1,16 @@
 import hashlib
 import json
 import os
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from .base import BaseModel
+from .migrations import MIGRATIONS
 from .urls import redact_url_secrets
+
+if TYPE_CHECKING:
+    from .evaluation import AgentEvaluationResult
 
 
 SCHEMA_SQL = """
@@ -142,6 +146,7 @@ class PostgreSQLStorage(BaseModel):
     """Small PostgreSQL adapter for benchmarks, runs, prompts, and evaluations."""
 
     config: PostgresConfig = Field(default_factory=PostgresConfig.from_env)
+    _connection: Any = PrivateAttr(default=None)
 
     def to_config(self) -> dict[str, Any]:
         return {
@@ -169,7 +174,22 @@ class PostgreSQLStorage(BaseModel):
     def initialize(self) -> None:
         with self.connect() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(184762901)")
+                cur.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
                 cur.execute(SCHEMA_SQL)
+                cur.execute("INSERT INTO schema_migrations(version) VALUES (1) "
+                            "ON CONFLICT DO NOTHING")
+                cur.execute("SELECT version FROM schema_migrations")
+                applied = {row["version"] for row in cur.fetchall()}
+                if applied - {1, *(version for version, _ in MIGRATIONS)}:
+                    raise RuntimeError("Database schema is newer than this application.")
+                for version, sql in MIGRATIONS:
+                    if version not in applied:
+                        cur.execute(sql)
+                        cur.execute("INSERT INTO schema_migrations(version) VALUES (%s)",
+                                    (version,))
             conn.commit()
 
     def upsert_benchmark(
@@ -217,13 +237,12 @@ class PostgreSQLStorage(BaseModel):
     ) -> int:
         query = """
         INSERT INTO examples (
-            benchmark_id, split, sample_id, input_json, label_json, metadata_json
+            benchmark_id, split, sample_id, input_json, label_json, metadata_json,
+            snapshot_hash
         )
-        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
-        ON CONFLICT (benchmark_id, split, sample_id) DO UPDATE SET
-            input_json = EXCLUDED.input_json,
-            label_json = EXCLUDED.label_json,
-            metadata_json = EXCLUDED.metadata_json
+        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+        ON CONFLICT (benchmark_id, split, sample_id, snapshot_hash) DO UPDATE SET
+            snapshot_hash = EXCLUDED.snapshot_hash
         RETURNING id;
         """
         return self._fetch_id(
@@ -235,6 +254,7 @@ class PostgreSQLStorage(BaseModel):
                 _json(input_data),
                 _json(label),
                 _json(metadata or {}),
+                stable_hash(_json([input_data, label, metadata or {}])),
             ),
         )
 
@@ -248,17 +268,21 @@ class PostgreSQLStorage(BaseModel):
     ) -> int:
         content_hash = stable_hash(content)
         query = """
-        INSERT INTO prompts (
-            content, content_hash, source, parent_prompt_id, metadata_json
+        WITH saved_content AS (
+            INSERT INTO prompt_contents(content, content_hash) VALUES (%s, %s)
+            ON CONFLICT (content_hash) DO UPDATE SET content_hash = EXCLUDED.content_hash
+            RETURNING id
         )
-        VALUES (%s, %s, %s, %s, %s::jsonb)
-        ON CONFLICT (content_hash) DO UPDATE SET
-            content = EXCLUDED.content
+        INSERT INTO prompts (
+            content_id, content, content_hash, source, parent_prompt_id, metadata_json
+        )
+        SELECT id, %s, %s, %s, %s, %s::jsonb FROM saved_content
         RETURNING id;
         """
         return self._fetch_id(
             query,
-            (content, content_hash, source, parent_prompt_id, _json(metadata or {})),
+            (content, content_hash, content, content_hash, source,
+             parent_prompt_id, _json(metadata or {})),
         )
 
     def save_agent_config(self, config: dict[str, Any]) -> int:
@@ -327,17 +351,18 @@ class PostgreSQLStorage(BaseModel):
         prompt_id: int | None,
         split: str,
         aggregate_metrics: dict[str, float],
+        dataset_fingerprint: str | None = None,
     ) -> int:
         query = """
         INSERT INTO evaluations (
-            run_id, prompt_id, split, aggregate_metrics_json
+            run_id, prompt_id, split, aggregate_metrics_json, dataset_fingerprint
         )
-        VALUES (%s, %s, %s, %s::jsonb)
+        VALUES (%s, %s, %s, %s::jsonb, %s)
         RETURNING id;
         """
         return self._fetch_id(
             query,
-            (run_id, prompt_id, split, _json(aggregate_metrics)),
+            (run_id, prompt_id, split, _json(aggregate_metrics), dataset_fingerprint),
         )
 
     def save_evaluation_item(
@@ -350,6 +375,9 @@ class PostgreSQLStorage(BaseModel):
         metrics: dict[str, float],
         rendered_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
+        raw_example: Any = None,
+        input_data: Any = None,
+        sample_id: str | None = None,
     ) -> int:
         query = """
         INSERT INTO evaluation_items (
@@ -359,9 +387,10 @@ class PostgreSQLStorage(BaseModel):
             label_json,
             metrics_json,
             rendered_prompt,
-            metadata_json
+            metadata_json, raw_example_json, input_json, sample_id
         )
-        VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s::jsonb)
+        VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s::jsonb,
+                %s::jsonb, %s::jsonb, %s)
         RETURNING id;
         """
         return self._fetch_id(
@@ -374,6 +403,9 @@ class PostgreSQLStorage(BaseModel):
                 _json(metrics),
                 rendered_prompt,
                 _json(metadata or {}),
+                _json(raw_example),
+                _json(input_data),
+                sample_id,
             ),
         )
 
@@ -432,7 +464,50 @@ class PostgreSQLStorage(BaseModel):
             ),
         )
 
+    def save_evaluation_result(
+        self, *, result: "AgentEvaluationResult", task_type: str,
+        description: str | None = None,
+        run_id: int | None = None, prompt_id: int | None = None,
+    ) -> int:
+        """Persist a completed evaluation on one connection, or roll it all back.
+
+        Agent/LLM execution takes place before this transaction begins.
+        """
+        fingerprint = result.compute_dataset_fingerprint()
+        with self.connect() as conn:
+            session = self.model_copy()
+            session._connection = conn
+            benchmark_id = session.upsert_benchmark(
+                name=result.benchmark_name, task_type=task_type, description=description,
+            )
+            evaluation_id = session.save_evaluation(
+                run_id=run_id, prompt_id=prompt_id, split=result.split,
+                aggregate_metrics=result.aggregate_metrics,
+                dataset_fingerprint=fingerprint,
+            )
+            for record in result.records:
+                example_id = session.add_example(
+                    benchmark_id=benchmark_id, split=result.split,
+                    sample_id=record.sample_id, input_data=record.input,
+                    label=record.label,
+                )
+                session.save_evaluation_item(
+                    evaluation_id=evaluation_id, example_id=example_id,
+                    prediction=record.prediction, label=record.label, metrics=record.metrics,
+                    rendered_prompt=record.rendered_prompt, metadata=record.metadata,
+                    raw_example=record.raw_example, input_data=record.input,
+                    sample_id=record.sample_id,
+                )
+            return evaluation_id
+
     def _fetch_id(self, query: str, params: tuple[Any, ...]) -> int:
+        if self._connection is not None:
+            with self._connection.cursor() as cur:
+                cur.execute(query, params)
+                row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("PostgreSQL query did not return an id.")
+            return int(row["id"])
         with self.connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
@@ -460,4 +535,4 @@ def mask_database_url(database_url: str | None) -> str | None:
 
 
 def _json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)

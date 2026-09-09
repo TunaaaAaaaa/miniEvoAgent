@@ -1,4 +1,5 @@
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from inspect import Parameter, signature
 import random
 from statistics import mean
@@ -9,6 +10,7 @@ from pydantic import Field
 from .agents import Agent
 from .base import BaseModel
 from .messages import Message
+from .storage import _json, stable_hash
 
 
 CollateFunc = Callable[[Any], dict[str, Any]]
@@ -18,45 +20,10 @@ PostprocessFunc = Callable[[Message], Any]
 class EvaluationStorage(Protocol):
     """Storage contract required by ``Evaluator.evaluate_agent``."""
 
-    def upsert_benchmark(
-        self,
-        *,
-        name: str,
-        task_type: str,
-        description: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> int: ...
-
-    def add_example(
-        self,
-        *,
-        benchmark_id: int,
-        split: str,
-        sample_id: str,
-        input_data: Any,
-        label: Any,
-        metadata: dict[str, Any] | None = None,
-    ) -> int: ...
-
-    def save_evaluation(
-        self,
-        *,
-        run_id: int | None,
-        prompt_id: int | None,
-        split: str,
-        aggregate_metrics: dict[str, float],
-    ) -> int: ...
-
-    def save_evaluation_item(
-        self,
-        *,
-        evaluation_id: int,
-        example_id: int | None,
-        prediction: Any,
-        label: Any,
-        metrics: dict[str, float],
-        rendered_prompt: str | None = None,
-        metadata: dict[str, Any] | None = None,
+    def save_evaluation_result(
+        self, *, result: "AgentEvaluationResult", task_type: str,
+        description: str | None = None, run_id: int | None = None,
+        prompt_id: int | None = None,
     ) -> int: ...
 
 
@@ -67,6 +34,7 @@ class AgentEvaluationRecord(BaseModel):
     split: str
     sample_id: str
     input: Any
+    raw_example: Any = None
     prediction: Any
     label: Any
     metrics: dict[str, float]
@@ -82,6 +50,15 @@ class AgentEvaluationResult(BaseModel):
     records: list[AgentEvaluationRecord]
     aggregate_metrics: dict[str, float]
     score_key: str = "f1"
+    dataset_fingerprint: str | None = None
+
+    def compute_dataset_fingerprint(self) -> str:
+        """Identify the ordered evaluated subset and its exact collated inputs."""
+        return stable_hash(_json({
+            "benchmark": self.benchmark_name, "split": self.split,
+            "records": [{"sample_id": r.sample_id, "raw_example": r.raw_example,
+                         "input": r.input, "label": r.label} for r in self.records],
+        }))
 
     @property
     def score(self) -> float:
@@ -124,27 +101,18 @@ class Evaluator(BaseModel):
         output_postprocess_func = output_postprocess_func or (lambda message: message.content)
         benchmark_name = self._get_benchmark_name(benchmark)
 
-        benchmark_storage_id = None
-        example_storage_ids: dict[str, int] = {}
-        if storage is not None:
-            task_type = benchmark_task_type or getattr(benchmark, "task_type", None)
-            benchmark_storage_id = storage.upsert_benchmark(
-                name=benchmark_name,
-                task_type=str(task_type or "unknown"),
-                description=getattr(benchmark, "description", None),
-                metadata={"source": type(benchmark).__name__},
-            )
-
         records: list[AgentEvaluationRecord] = []
         for example in examples:
+            raw_example = deepcopy(example)
             sample_id = str(benchmark.get_id(example))
-            label = benchmark.get_label(example)
+            label = deepcopy(benchmark.get_label(example))
             agent_inputs = collate_func(example)
             if not isinstance(agent_inputs, dict):
                 raise ValueError(
                     "collate_func must return a dict suitable for Agent.execute()."
                 )
 
+            input_snapshot = deepcopy(agent_inputs)
             message = agent.execute(agent_inputs)
             prediction = output_postprocess_func(message)
             metrics = benchmark.evaluate(prediction=prediction, label=label)
@@ -154,7 +122,8 @@ class Evaluator(BaseModel):
                 benchmark_name=benchmark_name,
                 split=split,
                 sample_id=sample_id,
-                input=agent_inputs,
+                input=input_snapshot,
+                raw_example=raw_example,
                 prediction=prediction,
                 label=label,
                 metrics=metrics,
@@ -162,16 +131,6 @@ class Evaluator(BaseModel):
                 metadata={"agent": agent.name, "action": agent.action.name},
             )
             records.append(record)
-
-            if storage is not None and benchmark_storage_id is not None:
-                example_storage_ids[sample_id] = storage.add_example(
-                    benchmark_id=benchmark_storage_id,
-                    split=split,
-                    sample_id=sample_id,
-                    input_data=agent_inputs,
-                    label=label,
-                    metadata={"source": type(benchmark).__name__},
-                )
 
         result = AgentEvaluationResult(
             benchmark_name=benchmark_name,
@@ -182,22 +141,15 @@ class Evaluator(BaseModel):
         )
 
         if storage is not None:
-            evaluation_id = storage.save_evaluation(
-                run_id=run_id,
-                prompt_id=prompt_id,
-                split=split,
-                aggregate_metrics=result.aggregate_metrics,
+            # Hash the ordered evaluated subset, including the actual collated inputs.
+            # Strict JSON rejects unsupported values instead of silently stringifying them.
+            result.dataset_fingerprint = result.compute_dataset_fingerprint()
+            task_type = benchmark_task_type or getattr(benchmark, "task_type", None)
+            storage.save_evaluation_result(
+                result=result, task_type=str(task_type or "unknown"),
+                description=getattr(benchmark, "description", None),
+                run_id=run_id, prompt_id=prompt_id,
             )
-            for record in records:
-                storage.save_evaluation_item(
-                    evaluation_id=evaluation_id,
-                    example_id=example_storage_ids.get(record.sample_id),
-                    prediction=record.prediction,
-                    label=record.label,
-                    metrics=record.metrics,
-                    rendered_prompt=record.rendered_prompt,
-                    metadata=record.metadata,
-                )
 
         return result
 

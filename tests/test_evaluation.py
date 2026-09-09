@@ -73,6 +73,10 @@ class RecordingStorage:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
+    def save_evaluation_result(self, **kwargs) -> int:
+        self.calls.append(("save_evaluation_result", kwargs))
+        return 30
+
     def upsert_benchmark(self, **kwargs) -> int:
         self.calls.append(("upsert_benchmark", kwargs))
         return 10
@@ -221,10 +225,30 @@ def test_evaluator_persists_records_when_storage_is_provided() -> None:
     )
 
     call_names = [name for name, _ in storage.calls]
-    assert call_names.count("upsert_benchmark") == 1
-    assert call_names.count("add_example") == 2
-    assert call_names.count("save_evaluation") == 1
-    assert call_names.count("save_evaluation_item") == 2
+    assert call_names == ["save_evaluation_result"]
     assert result.score == 1.0
-    assert storage.calls[0][1]["name"] == "fake_evoagentx_qa"
-    assert storage.calls[-1][1]["evaluation_id"] == 30
+    assert storage.calls[0][1]["result"] is result
+    assert storage.calls[0][1]["run_id"] == 7
+    assert result.records[0].raw_example["answer"] == "Paris"
+    assert result.dataset_fingerprint is not None
+
+
+def test_snapshots_precede_mutating_collation_and_agent_execution() -> None:
+    class MutatingAgent(Agent):
+        def execute(self, inputs):
+            message = super().execute(inputs)
+            inputs["question"] = "mutated by agent"
+            return message
+
+    agent = MutatingAgent(**build_agent().model_dump())
+    benchmark = FakeBenchmark()
+
+    def collate(example):
+        question = example.pop("question")
+        return {"question": question}
+
+    result = Evaluator().evaluate_agent(
+        agent=agent, benchmark=benchmark, collate_func=collate,
+    )
+    assert result.records[0].raw_example["question"] == "Capital of France?"
+    assert result.records[0].input["question"] == "Capital of France?"
